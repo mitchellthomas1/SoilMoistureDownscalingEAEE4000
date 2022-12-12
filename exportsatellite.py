@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import netCDF4 as nc
 from netCDF4 import date2num,num2date
+import datetime as dt
 ee.Initialize()
 
 
@@ -26,7 +27,7 @@ def create_netcdf(region_i):
     fn = '/Volumes/SeagateExternalDrive/MLEnvironment/Exports/export1/Region{}/s2s1smapexport1.nc'.format(region_i)
     print(fn )
     
-    ds = nc.Dataset(fn, 'w', format='NETCDF4', clobber=False)
+    ds = nc.Dataset(fn, 'w', format='NETCDF4', clobber=True)
     # add dimensions
     time = ds.createDimension('time', None)
     lat = ds.createDimension('lat', 7)
@@ -122,8 +123,9 @@ s2_filtered = S2_raw.filterDate(start,end).filterBounds(geometries) \
 for j, feature in enumerate(geometries.getInfo()['features']):
     ds,tll, attributes =  create_netcdf(j+1)
     times, lons, lats = tll
-    
-    times[:] = date2num(date_index.values, times.units)
+    dt_dates = [ts.to_pydatetime() for ts in date_index]
+    t_arr = date2num(dt_dates, times.units) #, calendar = 'standard' , has_year_zero = True)
+    times[:] = t_arr
     
     geom = ee.Feature(feature).geometry().buffer(-1)
     # get lat and lon
@@ -139,7 +141,8 @@ for j, feature in enumerate(geometries.getInfo()['features']):
         s2_mean = s2_filtered.filterDate(start,end).filterBounds(geom).mean()
         
                         #.map(mask_clouds).map(s2CastTypes).mean()
-        smap_mean = SMAP.filterDate(start,end).filterBounds(geom).mean()
+        smap_mean = SMAP.filterDate(start,end).filterBounds(geom).mean() \
+                        .setDefaultProjection(crs = smap_crs, crsTransform = smap_transform)
         # Reduce Resolution to smap
         s1_reduce = s1_mean.setDefaultProjection(crs = s1_crs, scale = s1_scale) \
                             .reduceResolution(reducer = ee.Reducer.mean(),
@@ -168,6 +171,7 @@ for j, feature in enumerate(geometries.getInfo()['features']):
         
                 
         print(i+1, '/', len(date_index))
+    ds.close()
     
     
     
