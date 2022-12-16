@@ -20,13 +20,17 @@ ee.Initialize()
 start = '2019-01-01'
 end = '2022-01-01'
 
+# Set size of reduction ('30m' or '10km')
+REDUCTION_MODE ='10km'
+
+
 date_index = pd.date_range(start=start, end=end, freq = '10D')
 date_eelist = ee.List([ee.Date(str(d)) for d in date_index.values[:-1]])
 
 nan_value = -99999
 
 # number of points to sample
-NPOINTS = 10000
+NPOINTS = 1000
 
 # input data sources:
    
@@ -108,7 +112,14 @@ USA_rough = ee.Geometry.Polygon(
           [-121.303515625, 48.672633455050736]]])
 
 
-# input projection
+USA_box =  ee.Geometry.Rectangle(
+        [-126.1375,
+        24.231635485098757,
+        -66.02031250000002,
+        49.855479489102024]
+          , None, False)     
+
+# PROJECTIONS 
 crs = 'EPSG:4326'
 transform = [0.140625,0,-179.9993125,0,-0.09375,90.000125]
 
@@ -121,6 +132,19 @@ s1_scale = 10
 
 s2_crs = 'EPSG:32615'
 s2_scale = 20
+
+if REDUCTION_MODE == '40m':
+    REDUCTION_TRANSFORM = [0.0003593261136478086, 0,0,0,-0.0003593261136478086,0]
+    REDUCTION_SCALE = None
+    BUFFER_SCALE = 20
+elif REDUCTION_MODE == '10km':
+    REDUCTION_TRANSFORM = transform
+    REDUCTION_SCALE = None
+    BUFFER_SCALE = 5000
+else:
+    raise ValueError()
+    
+print(REDUCTION_TRANSFORM, REDUCTION_SCALE)
 
 # bands to study
 s1_bands = ['VV', 'VH', 'angle']
@@ -145,12 +169,19 @@ def s2CastTypes(s2_image):
     return s2_cast
     
 
-def ndvi(image):
-    ndvi = image.normalizedDifference('B')
+# def ndvi(image):
+#     ndvi = image.normalizedDifference('B')
     
 
-s2_filtered = S2_raw.filterDate(start,end).filterBounds(USA_rough) \
+s2_filtered = S2_raw.filterDate(start,end).filterBounds(USA_box) \
                             .select(s2_bands).map(mask_clouds).map(s2CastTypes)
+
+s1_filtered = S1_raw.filterDate(start,end) \
+                .filterBounds(USA_box) \
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))\
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))\
+                .filter(ee.Filter.eq('instrumentMode', 'IW'))
+             
 
                             
 # create netcdf file
@@ -173,7 +204,7 @@ def mappingDatesShell(geom):
         INTERVAL = 10
         start = ee.Date(startDate)
         end = start.advance(INTERVAL,'days')
-        s1_mean = S1_raw.filterDate(start,end).filterBounds(geom).mean()
+        s1_mean = s1_filtered.filterDate(start,end).filterBounds(geom).mean()
         s2_mean = s2_filtered.filterDate(start,end).filterBounds(geom).mean()
             
                             #.map(mask_clouds).map(s2CastTypes).mean()
@@ -182,35 +213,38 @@ def mappingDatesShell(geom):
             # Reduce Resolution to smap
         s1_reduce = s1_mean.setDefaultProjection(crs = s1_crs, scale = s1_scale) \
                         .reduceResolution(reducer = ee.Reducer.mean(),
-                             bestEffort = True, 
-                             maxPixels = 65000) \
-                        .reproject(crs = crs, crsTransform = transform)
+                            bestEffort = True, 
+                            maxPixels = 65000) #\
+                       # .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
                                 
         s2_1_reduce = s2_mean.select(s2_bands[:7]) \
                         .setDefaultProjection(crs = s2_crs, scale = s2_scale) \
                         .reduceResolution(reducer = ee.Reducer.mean(),
                                  bestEffort = True, 
-                                 maxPixels = 65000)  \
-                            .reproject(crs = crs, crsTransform = transform)
+                                 maxPixels = 65000)  #\
+                        #    .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
+                            
         s2_2_reduce = s2_mean.select(s2_bands[7:]) \
                         .setDefaultProjection(crs = s2_crs, scale = s2_scale)\
                         .reduceResolution(reducer = ee.Reducer.mean(),
                                  bestEffort = True, 
-                                 maxPixels = 65000) \
-                            .reproject(crs = crs, crsTransform = transform)
+                                 maxPixels = 65000) #\
+                          #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
                             
         tpi_reduce = TPI.reduceResolution(reducer = ee.Reducer.mean(),
                                  bestEffort = True, 
-                                 maxPixels = 65000) \
-                            .reproject(crs = crs, crsTransform = transform)     
+                                 maxPixels = 65000) #\
+                           #.reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)    
+                            
         lc_reduce = LC.reduceResolution(reducer = ee.Reducer.mode(minBucketWidth = 1, maxBuckets = 85),
                                  bestEffort = True, 
-                                 maxPixels = 65000) \
-                            .reproject(crs = crs, crsTransform = transform)
-        fc_reduce = TPI.reduceResolution(reducer = ee.Reducer.mean(),
+                                 maxPixels = 65000)# \
+                          #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
+                            
+        fc_reduce = FC.reduceResolution(reducer = ee.Reducer.mean(),
                                  bestEffort = True, 
-                                 maxPixels = 65000) \
-                            .reproject(crs = crs, crsTransform = transform)    
+                                 maxPixels = 65000) #\
+                          #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)    
                             
                             
         final_image = s2_1_reduce.addBands(s2_2_reduce).addBands(s1_reduce).addBands(smap_mean) \
@@ -218,14 +252,16 @@ def mappingDatesShell(geom):
                                 .set('start', start, 'end',end)
                             
         return ee.Image(final_image)
+        # return ee.Image(s1_reduce)
     
     return mappingDates
 
+
 def mapOverImagesShell(geom):
-    def mapOverImages(image):
-        
+    def mapOverImages(image):     
         reduction = image.reduceRegion(geometry = geom,
-            reducer = ee.Reducer.mean(), crs = smap_crs, crsTransform = smap_transform)
+            reducer = ee.Reducer.mean(), crs = smap_crs, 
+                    crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
         output_dict = reduction.set('StartDate', ee.Date(image.get('start')))\
                           .set('EndDate', ee.Date(image.get('end')))
         return ee.Feature(None,output_dict )
@@ -237,10 +273,20 @@ def mapOverGeoms(feature):
     takes a feature, returns a 
     '''
     geom = ee.Feature(feature).geometry()
+    geom_buffer = geom.buffer(BUFFER_SCALE).bounds()
+
     
-    dateIC = ee.ImageCollection(date_eelist.map( mappingDatesShell(geom) ) ) 
+    dateIC = ee.ImageCollection(date_eelist.map( mappingDatesShell(geom_buffer) ) ) 
     
-    geom_coll = ee.FeatureCollection(dateIC.map( mapOverImagesShell(geom) ) )
+    #
+    # AGHAHGHADGHSDKHGSD 
+    
+    
+    # FIX THISSSS BELOW
+    
+    
+    
+    geom_coll = ee.FeatureCollection(dateIC.map( mapOverImagesShell(geom_buffer) ) )
     def addCoords(feature):
         return feature.set('PointIndex', feature.get('system:index'))\
             .set('coordinates', geom.coordinates())
@@ -249,20 +295,65 @@ def mapOverGeoms(feature):
 
 
 
+
+
 #### TRAINING DATA 1
 
 # feature collection with a bunch of points to sample
 pixelSamples = ee.FeatureCollection(SMAP.filterBounds(USA_rough).first()
-     .sampleRegions(collection = USA_rough, projection = SMAP.first().projection(), geometries = True))
+      .sampleRegions(collection = USA_rough, projection = SMAP.first().projection(), geometries = True))
 
-sample = ee.FeatureCollection(pixelSamples.randomColumn(seed = 12).sort('random').toList(NPOINTS))
+fc = ee.FeatureCollection(pixelSamples.randomColumn(seed = 12).sort('random').toList(NPOINTS))
+
+output_fc = ee.FeatureCollection(fc.map(mapOverGeoms)).flatten()
+print(output_fc.first().getInfo())
+
+task = ee.batch.Export.table.toDrive(collection = output_fc, 
+                                      description = 'PointSamples{}pts'.format(NPOINTS), 
+                                      folder = 'MLEnvironmentGEE', 
+                                      fileNamePrefix = 'Point100Sample',
+                                      fileFormat = 'CSV')
+task.start()
+
+
 ####
 
-#### TRAINING DATA 2
+
+
+
+#### TRAINING DATA 2: Gauge Stations
+asset_id = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+# gauge_info_file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
+# gauge_df = pd.read_csv(gauge_info_file)
+# features = []
+# for i in range(len(gauge_df)):
+#     g = gauge_df.iloc[i]
+#     geom = ee.Geometry.Point([ g.Longitude, g.Latitude,])
+#     ft  = ee.Feature(geom, {'system:index':g.GaugeID})
+#     features.append(ft)
+# fc = ee.FeatureCollection(features)
+# 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+# task = ee.batch.Export.table.toAsset(collection = fc, 
+#                                          description = 'gaugepoints', 
+#                                          assetId = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+#                                          )
+# task.start()
+fc = ee.FeatureCollection(asset_id)
+
+# # print(fc.first().getInfo())
+# output_fc = ee.FeatureCollection(fc.map(mapOverGeoms)).flatten()
+
+# task = ee.batch.Export.table.toDrive(collection = output_fc, 
+#                                       description = 'SMGaugePoints', 
+#                                       folder = 'MLEnvironmentGEE', 
+#                                       fileNamePrefix = 'SMGaugePoints2',
+#                                       fileFormat = 'CSV')
+# task.start()
+
+
 
     
 
-fc = sample
 
 
 # feature = fc.first()
@@ -273,19 +364,5 @@ fc = sample
 # geom_coll = ee.FeatureCollection(dateIC.map( mapOverImagesShell(geom) ) )
 # print(geom_coll.size().getInfo())
 # geom_coll.first().getInfo()
-output_fc = ee.FeatureCollection(fc.map(mapOverGeoms)).flatten()
-
-# # print(output_fc.getInfo())
-
-
-
-
-
-task = ee.batch.Export.table.toDrive(collection = output_fc, 
-                                      description = 'PointSamples{}pts'.format(NPOINTS), 
-                                      folder = 'MLEnvironmentGEE', 
-                                      fileNamePrefix = 'Point100Sample',
-                                      fileFormat = 'CSV')
-task.start()
 
     

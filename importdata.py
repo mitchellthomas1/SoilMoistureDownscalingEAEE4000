@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import os
 
+path = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/'
 
 # files = ['/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/regionsamples/Region{}Samples.csv'.format(i) for i in range(3,11)]
        
@@ -51,18 +52,19 @@ def process_gee_file(file):
     
     return final_arr 
 
-file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/pointsamples/Point100Sample.csv'
-def process_gee_point_file(file):
+# file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/pointsamples/Point100Sample.csv'
+def process_gee_point_file(file, predictors, fillna = False, si_index = 1):
     
-    bands = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6',
-           'B7', 'B8', 'B8A', 'B9', 'VH', 'VV', 'angle','landcover', 'elevation', 'ssm']
+    if 'NDVI' in predictors:
+        predictors.remove('NDVI')
+    
     # print(file)
     # global df_raw
     df_raw = pd.read_csv(file)
     def unique_preserve_order(li): # get unique list and preserves order
         _, idx = np.unique(li, return_index=True)
         return li[[np.sort(idx)]]
-    index_col = np.array([x.split('_')[1] for x in df_raw['system:index'].values])
+    index_col = np.array([x.split('_')[si_index] for x in df_raw['system:index'].values])
     
     sys_index = unique_preserve_order(index_col)
     
@@ -76,7 +78,9 @@ def process_gee_point_file(file):
     index_arrays = [df_raw['index_column'], df_raw['DateIndex']]
     index = pd.MultiIndex.from_arrays(index_arrays, names=('PointIndex', 'Date'))
     
-    df = df_raw[bands].fillna(method = 'ffill')
+    df = df_raw[predictors]
+    if fillna == True:
+        df = df.fillna(method = 'ffill')
     df.index = index
     
 
@@ -90,7 +94,7 @@ def process_gee_point_file(file):
 
 def return_all_regions():
     files = ['/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/regionsamples/Region{}Samples.csv'.format(i) for i in range(3,11)]
-    regions_arr = np.array([process_gee_file(f) for f in files])
+    regions_arr = np.concatenate([process_gee_file(f) for f in files],axis = 1)
     return regions_arr
 
 # regions_arr = return_all_regions()
@@ -150,13 +154,15 @@ def import_ismn(ismn_download, start, end):
     #minimum datapoints to keep a series
     MIN_POINTS = 80
     # files = os.walk(ismn_download) 
-    systems = [x for x in os.listdir(ismn_download) if x not in ['.DS_Store','Readme.txt','Metadata.xml','ISMN_qualityflags_description.txt']]
+    systems = [x for x in os.listdir(ismn_download) if x not in ['.DS_Store','Readme.txt','Metadata.xml','ISMN_qualityflags_description.txt', 'namesandcoordinates.csv']]
     i = 1
     # maps gauges to 
     gauge_dict = {}
     all_series = []
     # default_index = pd.date_range(start=pd.Timestamp(2019,1,1), end=pd.Timestamp(2022,1,1), freq='10D')
+    coord_list = []
     for sys in systems:
+        print(sys)
         system_dir = ismn_download + '/' + sys
         for site in [f for f in os.listdir(system_dir) if f != '.DS_Store']:
             site_file_dir = system_dir + '/' + site
@@ -183,20 +189,66 @@ def import_ismn(ismn_download, start, end):
                 i += 1
                 prefix = ismn_download + '/' + sys + '/' + site + '/'
                 _ , (lon, lat), name = stm_to_series(prefix + site_files[min_files[0]])
-                print(name)
+                # print(name)
                 net, station = name.split('-')
                 gauge_dict['gauge_{}'.format(i)] = {'lon': lon,'lat':lat,
                                                 'network': net, 'stationname': station}
-         
+                coord_list.append([lon, lat])
+   
+        
     # index = pd.date_range(start=pd.Timestamp(2019,1,1), end=pd.Timestamp(2022,1,1), freq='10D')
-    final_df = pd.concat(all_series, axis = 1) 
-    final_df.columns = list(range(1,i))
+    final_df = pd.concat(all_series, axis = 0)
+
+    # reorder into vertically concatted array 
+    # if coordinate_dict is not None:
+    #     vertical_li = []
+    #     sat_coord_list = [eval(coordinate_dict[x]['str_coord']) for x in coordinate_dict]
+    #     sat_coord_arr = np.round(np.array(sat_coord_list).astype(float), decimals = 4)
+    #     ismn_coord_arr = np.round(np.array(coord_list).astype(float), decimals = 4)
+    #     # create empty placeholder
+    #     empty = np.empty(len(final_df_wide.index))
+    #     empty[:] = np.nan
+    #     empty_series = pd.Series(empty, index= final_df_wide.index)
+    #     # go through each satellite coordinate, match up with 
+    #     for gauge in sat_coord_arr:
+    #         where = np.where(ismn_coord_arr == gauge)
+    #         print(where)
+            
+    
+    # final_df_wide.columns = list(range(1,i))
     return final_df, gauge_dict
         
 # start = pd.Timestamp(2019,1,1)
 # end = pd.Timestamp(2022,1,1)
 # ismn_download = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1'
+
 # final_df, gauge_dict = import_ismn(ismn_download, start, end)
+
+# final_df.to_csv(path+'DataDownload/InSitu/SoilMoistureDataFrameGreaterThan80.csv')
+
+def download_gauge_csv(gauge_dict):
+    download_file = path + 'DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
+    gauge_ids = []
+    networks = []
+    stations = []
+    lats = []
+    lons = []
+    for key in gauge_dict.keys():
+        gd = gauge_dict[key]
+        gauge_ids.append(key)
+        networks.append(gd['network'])
+        stations.append(gd['stationname'])
+        lats.append(gd['lat'])
+        lons.append(gd['lon'])
+        
+    g_df = pd.DataFrame({'GaugeID': gauge_ids,
+                  'Network': networks,
+                  'Station':stations,
+                  'Latitude':lats,
+                  'Longitude': lons})
+    g_df.to_csv(download_file)
+    
+
         
     
     # print(root)
