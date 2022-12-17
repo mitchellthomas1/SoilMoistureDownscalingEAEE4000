@@ -36,11 +36,11 @@ predictand = ['ssm']
 # set hyperparameters
 n_neuron       = 64
 activation     = 'relu'
-num_epochs     = 10
-learning_rate  = 0.001
+num_epochs     = 40
+learning_rate  = 0.0005
 minibatch_size = 64
 model_num      = 1
-    
+
 X_train, y_train, X_test, y_test, X_length = prepare_10kmdata(file1, predictors, predictand, lc_bands, dropna = True)
 
 
@@ -48,16 +48,24 @@ X_train, y_train, X_test, y_test, X_length = prepare_10kmdata(file1, predictors,
 input1 = Input(shape= (X_train.shape[1],))
 # Layer 1
 dense1 = Dense(n_neuron,  activation=activation)
-x = dense1(input1)
+
 # Layer 2
 dense2 = Dense(n_neuron,  activation=activation)
-x = dense2(x)
+
 #Layer 3
 dense3 = Dense(n_neuron,  activation=activation)
-x = dense3(x)
-#Output
-output1 = Dense(y_train.shape[1],  activation='linear')(x)
 
+#Dropout
+dropout_layer = Dropout(rate = 0.3)
+
+#Output
+output_layer_1 = Dense(y_train.shape[1],  activation='linear')
+
+x = dense1(input1)
+x = dense2(x)
+x = dense3(x)
+x = dropout_layer(x)
+output1 = output_layer_1(x)
 
 model1 = Model(inputs = input1, outputs = output1)
 model1.compile(loss='mse',optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
@@ -68,7 +76,7 @@ model1.summary()
 early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)
 
 
-history = model1.fit(X_train, y_train, 
+history1 = model1.fit(X_train, y_train, 
                     batch_size      = minibatch_size,
                     epochs          = num_epochs,
                     validation_split= 0.2, 
@@ -83,15 +91,22 @@ history = model1.fit(X_train, y_train,
 input2 = Input(shape= (1,))
 
 input_concat = Concatenate()([output1, input2 ])
-
 dense1_2 = Dense(n_neuron,  activation=activation)
-x2 = dense1_2(input_concat)
 # Layer 2
-dense2_2 = Dense(n_neuron,  activation=activation)(x2)
-#Layer 3
-dense3_2 = Dense(n_neuron,  activation=activation)(dense2_2)
+dense2_2 = Dense(n_neuron,  activation=activation)
+# Layer 3
+dense3_2 = Dense(n_neuron,  activation=activation)
+#output
+output_layer_2 = Dense(y_train.shape[1],  activation='linear')
+#dropout
+dropout_layer = Dropout(rate = 0.3)
 
-output2 = Dense(y_train.shape[1],  activation='linear')(dense3_2)
+
+x = dense1_2(input_concat)
+x = dense2_2(x)
+x = dense3_2(x)
+x = dropout_layer(x)
+output2 = output_layer_2(x)
 
 model2 = Model(inputs = [input1, input2], outputs = output2)
 
@@ -101,9 +116,9 @@ dense2.trainable = False
 dense3.trainable = True
 
 
-model2.compile(loss='mse', optimizer='sgd')
 
-model2.summary()
+
+
 
 plot_model(model2)
 
@@ -112,19 +127,31 @@ plot_model(model2)
 
 # STEP 2: bring in additional data at 30m resolution
 insitu_file = path+'DataDownload/InSitu/SoilMoistureDataFrameGreaterThan80.csv'
-predictors = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8',
-       'B8A', 'B9', 'VH', 'VV', 'angle', 'elevation', 'NDVI','ssm']
+predictors1 = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8',
+       'B8A', 'B9', 'VH', 'VV', 'angle', 'elevation', 'NDVI']
+predictors2 = ['ssm']
 predictand = ['InSituSM']
-X2_train, y2_train, X2_test, y2_test, X2_length = prepare_40mdata(file2,insitu_file, predictors, predictand, lc_bands, dropna = True)
+
+X2_1_train, X2_2_train, y2_train, X2_1_test, X2_2_test, y2_test, X2_length = prepare_40mdata(
+                            file2,insitu_file, predictors1, predictors2, predictand, lc_bands, dropna = True)
 
 # model.predict()
 
+# set hyperparameters
+n_neuron       = 64
+activation     = 'relu'
+num_epochs     = 40
+learning_rate  = 0.00001
+minibatch_size = 64
 
-X_train2_i1 = np.random.randn(*X_train.shape)
-X_train2_i2 = np.random.randn(X_train.shape[0], 1)
-X_train2_o2 = np.random.randn(X_train.shape[0], 1)
 
-history2 = model2.fit([X_train2_i1, X_train2_i2], y_train, 
+model2.compile(loss='mse',optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
+model2.summary()
+
+# Train the model
+early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)
+
+history2 = model2.fit([X2_1_train, X2_2_train], y2_train, 
                     batch_size      = minibatch_size,
                     epochs          = num_epochs,
                     validation_split= 0.2, 
@@ -150,25 +177,64 @@ history2 = model2.fit([X_train2_i1, X_train2_i2], y_train,
 # plt.show()
 
 
+y_truth = y2_test
+
+y_smap = X2_2_test
 
 
-# y_test_pre = model1.predict(X_test)
-# y_truth = y_test
-
-# rmse = metrics.mean_squared_error(y_truth, y_test_pre, squared = False)
+rmse = metrics.mean_squared_error(y_truth, y_smap, squared = False)
 
 
-# plt.scatter(y_truth,y_test_pre, s = 2)
-# plt.xlabel('Truth')
-# plt.ylabel('Predicted')
-# plt.xlim(-3,3)
-# plt.ylim(-3,3)
-# plt.title('Testing RMSE = {}'.format(rmse))
-# plt.show()
-# plt.clf()
+plt.scatter(y_truth,y_smap, s = 2)
+plt.xlabel('Truth')
+plt.ylabel('Predicted')
+plt.xlim(-3,3)
+plt.ylim(-3,3)
+plt.title('SMAP vs In Situ, Testing RMSE = {}'.format(rmse))
+plt.show()
+plt.clf()
 
 
-# plot_history(history)
-# plt.show()
-# plt.clf()
+y_test_pre = model1.predict(X2_1_test)
+
+
+rmse = metrics.mean_squared_error(y_truth, y_test_pre, squared = False)
+
+
+plt.scatter(y_truth,y_test_pre, s = 2)
+plt.xlabel('Truth')
+plt.ylabel('Predicted')
+plt.xlim(-3,3)
+plt.ylim(-3,3)
+plt.title('First Half Model vs In Situ Testing RMSE = {}'.format(rmse))
+plt.show()
+plt.clf()
+
+
+
+
+y_test_pre = model2.predict([X2_1_test, X2_2_test])
+
+
+rmse = metrics.mean_squared_error(y_truth, y_test_pre, squared = False)
+
+
+plt.scatter(y_truth,y_test_pre, s = 2)
+plt.xlabel('Truth')
+plt.ylabel('Predicted')
+plt.xlim(-3,3)
+plt.ylim(-3,3)
+plt.title('Full Model vs In Situ Testing RMSE = {}'.format(rmse))
+plt.show()
+plt.clf()
+
+
+plot_history(history1)
+plt.show()
+plt.clf()
+
+
+plot_history(history2)
+plt.show()
+plt.clf()
 

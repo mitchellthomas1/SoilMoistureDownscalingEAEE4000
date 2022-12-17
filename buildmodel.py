@@ -77,8 +77,9 @@ def prepare_10kmdata(file, predictors, predictand, lc_vals, dropna = False):
     random_sample_df['NDVI'] = normalized_difference(random_sample_df['B8'], random_sample_df['B4']  )
 
     logbands = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9']
+    log_plus = lambda x: np.log(x + 1) 
     for b in logbands:
-        random_sample_df[b] = random_sample_df[b].apply(np.log)
+        random_sample_df[b] = random_sample_df[b].apply(log_plus)
 
     # global transformed_df
     transformed_df  = random_sample_df.drop('landcover', axis = 1).apply(z_score)
@@ -92,14 +93,16 @@ def prepare_10kmdata(file, predictors, predictand, lc_vals, dropna = False):
         transformed_df = transformed_df.dropna()
 
     
+    
     # define percentages for train, val, test
     training_perc = .70
     
     testing_perc = .30
     
-    possible_pts = list(coordinate_df.keys())
+    possible_pts = list(np.unique(list(transformed_df.index.get_level_values('PointIndex'))))
+
     shuffled = random.sample(possible_pts, k=len(possible_pts))
-    
+
     training_pts = shuffled[0:round(training_perc*len(possible_pts))]
     # validation_pts = shuffled[round(training_perc*len(possible_pts)) : round((training_perc+validation_perc)*len(possible_pts)) ]
     testing_pts = shuffled[ round(training_perc*len(possible_pts)) : ]
@@ -108,79 +111,94 @@ def prepare_10kmdata(file, predictors, predictand, lc_vals, dropna = False):
     # validation_df = transformed_df.loc[validation_pts]
     testing_df = transformed_df.loc[testing_pts]
     
+
     X_train = training_df[predictors].to_numpy()
     y_train = training_df[predictand].to_numpy()
-    X_length = y_length = [len(training_df.loc[pt]) for pt in training_pts]
     
+    X_length = y_length = [len(training_df.loc[pt]) for pt in training_pts]
+
     # X_val = validation_df[predictors].to_numpy()
     # y_val = validation_df[predictand].to_numpy()
     
     X_test = testing_df[predictors].to_numpy()
     y_test = testing_df[predictand].to_numpy()
+
     
     return X_train, y_train, X_test, y_test, X_length
 
 
 
-def prepare_40mdata(file,sm_file, predictors, predictand, lc_vals, dropna = False):
+def prepare_40mdata(file,sm_file, predictors1,predictors2, predictand, lc_vals, dropna = False):
     fillna = not dropna
     
     get_from_file = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8',
            'B8A', 'B9', 'VH', 'VV', 'angle', 'elevation', 'landcover','ssm']
     random_sample_df, coordinate_df = process_gee_point_file(file, get_from_file, si_index = 0, fillna = fillna)
+    # print(len(coordinate_df))
     random_sample_df['NDVI'] = normalized_difference(random_sample_df['B8'], random_sample_df['B4']  )
 
     logbands = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9']
+    log_plus = lambda x: np.log(x + 1) 
     for b in logbands:
-        random_sample_df[b] = random_sample_df[b].apply(np.log)
+        random_sample_df[b] = random_sample_df[b].apply(log_plus)
         
-
-
-    transformed_df  = random_sample_df.drop('landcover', axis = 1).apply(z_score)
-    
-    #encode landcover 
-    transformed_df, names = encode_landcover(transformed_df,random_sample_df['landcover'], lc_vals )
-    predictors = predictors + list(names)
-    
-    
     # import soil moisture in situ data
     insitu = pd.read_csv(sm_file)['InSituSM'].values
-    print(insitu)
-    transformed_df['InSituSM'] = insitu
+    random_sample_df['InSituSM'] = insitu
 
+    transformed_df  = random_sample_df.drop('landcover', axis = 1).apply(z_score)
+    # print(transformed_df.plot())
+    # plt.show()
+    #encode landcover 
+    transformed_df, names = encode_landcover(transformed_df,random_sample_df['landcover'], lc_vals )
+    predictors1 = predictors1 + list(names)
     
-    print(transformed_df)
+    
+    
+    # print(insitu)
+    # print(transformed_df)
+    
+    # print(transformed_df.index)
+    
+    # print(transformed_df)
     if dropna == True:
         transformed_df = transformed_df.dropna()
         
-    print(transformed_df)
+    # print(transformed_df)
+    # print('\n\n\n\n')
+    # print(transformed_df.index)
     # define percentages for train, val, test
     training_perc = .70
     
     testing_perc = .30
     
-    possible_pts = list(coordinate_df.keys())
+    possible_pts = list(np.unique(list(transformed_df.index.get_level_values('PointIndex'))))
+    # print("possible pts", possible_pts)
     shuffled = random.sample(possible_pts, k=len(possible_pts))
     
     training_pts = shuffled[0:round(training_perc*len(possible_pts))]
+    # print("training pts", training_pts)
     # validation_pts = shuffled[round(training_perc*len(possible_pts)) : round((training_perc+validation_perc)*len(possible_pts)) ]
     testing_pts = shuffled[ round(training_perc*len(possible_pts)) : ]
     
     training_df = transformed_df.loc[training_pts]
     # validation_df = transformed_df.loc[validation_pts]
     testing_df = transformed_df.loc[testing_pts]
-    print(training_df.columns)
-    X_train = training_df[predictors].to_numpy()
+    # print(training_df.columns)
+    
+    X_1_train = training_df[predictors1].to_numpy()
+    X_2_train = training_df[predictors2].to_numpy()
     y_train = training_df[predictand].to_numpy()
     X_length = y_length = [len(training_df.loc[pt]) for pt in training_pts]
     
     # X_val = validation_df[predictors].to_numpy()
     # y_val = validation_df[predictand].to_numpy()
     
-    X_test = testing_df[predictors].to_numpy()
+    X_1_test = testing_df[predictors1].to_numpy()
+    X_2_test = testing_df[predictors2].to_numpy()
     y_test = testing_df[predictand].to_numpy()
     
-    return X_train, y_train, X_test, y_test, X_length
+    return X_1_train, X_2_train, y_train, X_1_test,X_2_test, y_test, X_length
 
 
 # file2 = path + 'DataDownload/InSitu/InSituGEEOutputs/SMGaugePoints2.csv'

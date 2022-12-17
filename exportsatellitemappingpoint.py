@@ -323,15 +323,16 @@ task.start()
 
 #### TRAINING DATA 2: Gauge Stations
 asset_id = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
-# gauge_info_file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
-# gauge_df = pd.read_csv(gauge_info_file)
-# features = []
-# for i in range(len(gauge_df)):
-#     g = gauge_df.iloc[i]
-#     geom = ee.Geometry.Point([ g.Longitude, g.Latitude,])
-#     ft  = ee.Feature(geom, {'system:index':g.GaugeID})
-#     features.append(ft)
-# fc = ee.FeatureCollection(features)
+gauge_info_file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
+gauge_df = pd.read_csv(gauge_info_file)
+features = []
+for i in range(len(gauge_df)):
+    g = gauge_df.iloc[i]
+    geom = ee.Geometry.Point([ g.Longitude, g.Latitude,])
+    ft  = ee.Feature(geom, {'system:index':g.GaugeID})
+    features.append(ft)
+fc = ee.FeatureCollection(features)
+print(fc.size().getInfo())
 # 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
 # task = ee.batch.Export.table.toAsset(collection = fc, 
 #                                          description = 'gaugepoints', 

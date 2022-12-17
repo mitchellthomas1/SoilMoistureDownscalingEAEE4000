@@ -162,14 +162,15 @@ def import_ismn(ismn_download, start, end):
     # default_index = pd.date_range(start=pd.Timestamp(2019,1,1), end=pd.Timestamp(2022,1,1), freq='10D')
     coord_list = []
     for sys in systems:
-        print(sys)
+        # print(sys)
         system_dir = ismn_download + '/' + sys
         for site in [f for f in os.listdir(system_dir) if f != '.DS_Store']:
+            print(sys, site)
             site_file_dir = system_dir + '/' + site
             site_files = [f for f in os.listdir(site_file_dir) if '.stm' in f]
             start_depths = np.array([float(f.split('_')[4]) for f in site_files ])
             min_files = np.where(start_depths == min(start_depths))[0]
-            
+
             if len(min_files) == 0:
                 raise Exception('min files length 0')
             elif len(min_files) == 1:
@@ -185,7 +186,7 @@ def import_ismn(ismn_download, start, end):
                 series = pd.DataFrame([stm_to_series(prefix + site_files[i])[0] for i in min_files]).mean()
     
             if series.dropna().size >= MIN_POINTS:
-                all_series.append(series)
+                all_series.append(series[:-1])
                 i += 1
                 prefix = ismn_download + '/' + sys + '/' + site + '/'
                 _ , (lon, lat), name = stm_to_series(prefix + site_files[min_files[0]])
@@ -224,7 +225,8 @@ def import_ismn(ismn_download, start, end):
 
 # final_df, gauge_dict = import_ismn(ismn_download, start, end)
 
-# final_df.to_csv(path+'DataDownload/InSitu/SoilMoistureDataFrameGreaterThan80.csv')
+
+# final_df.to_csv(path+'DataDownload/InSitu/SoilMoistureDataFrameGreaterThan80_2.csv')
 
 def download_gauge_csv(gauge_dict):
     download_file = path + 'DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
