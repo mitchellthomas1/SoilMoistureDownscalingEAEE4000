@@ -20,8 +20,8 @@ def normalized_difference(b1,b2):
     return (b1 - b2) / (b1 + b2)
 # normalize data over each band and each sampled pt
 def z_score(sample):
-    mean = np.mean(sample)
-    std = np.std(sample)
+    mean = np.nanmean(sample)
+    std = np.nanstd(sample)
     z = (sample - mean) / std 
     return z 
 
@@ -77,9 +77,8 @@ def prepare_10kmdata(file, predictors, predictand, lc_vals, dropna = False):
     random_sample_df['NDVI'] = normalized_difference(random_sample_df['B8'], random_sample_df['B4']  )
 
     logbands = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9']
-    log_plus = lambda x: np.log(x + 1) 
     for b in logbands:
-        random_sample_df[b] = random_sample_df[b].apply(log_plus)
+        random_sample_df[b] = random_sample_df[b].apply(np.log)
 
     # global transformed_df
     transformed_df  = random_sample_df.drop('landcover', axis = 1).apply(z_score)
@@ -95,17 +94,17 @@ def prepare_10kmdata(file, predictors, predictand, lc_vals, dropna = False):
     
     
     # define percentages for train, val, test
-    training_perc = .70
+    training_perc = .80
     
-    testing_perc = .30
+    testing_perc = .20
     
     possible_pts = list(np.unique(list(transformed_df.index.get_level_values('PointIndex'))))
 
-    shuffled = random.sample(possible_pts, k=len(possible_pts))
+    # shuffled = random.sample(possible_pts, k=len(possible_pts))
 
-    training_pts = shuffled[0:round(training_perc*len(possible_pts))]
+    training_pts = possible_pts[0:round(training_perc*len(possible_pts))]
     # validation_pts = shuffled[round(training_perc*len(possible_pts)) : round((training_perc+validation_perc)*len(possible_pts)) ]
-    testing_pts = shuffled[ round(training_perc*len(possible_pts)) : ]
+    testing_pts = possible_pts[ round(training_perc*len(possible_pts)) : ]
     
     training_df = transformed_df.loc[training_pts]
     # validation_df = transformed_df.loc[validation_pts]
@@ -134,13 +133,12 @@ def prepare_40mdata(file,sm_file, predictors1,predictors2, predictand, lc_vals, 
     get_from_file = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8',
            'B8A', 'B9', 'VH', 'VV', 'angle', 'elevation', 'landcover','ssm']
     random_sample_df, coordinate_df = process_gee_point_file(file, get_from_file, si_index = 0, fillna = fillna)
-    # print(len(coordinate_df))
+    # print(len(coordinate_df))  
     random_sample_df['NDVI'] = normalized_difference(random_sample_df['B8'], random_sample_df['B4']  )
 
     logbands = ['B1', 'B10', 'B11', 'B12', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9']
-    log_plus = lambda x: np.log(x + 1) 
     for b in logbands:
-        random_sample_df[b] = random_sample_df[b].apply(log_plus)
+        random_sample_df[b] = random_sample_df[b].apply(np.log)
         
     # import soil moisture in situ data
     insitu = pd.read_csv(sm_file)['InSituSM'].values
@@ -168,18 +166,22 @@ def prepare_40mdata(file,sm_file, predictors1,predictors2, predictand, lc_vals, 
     # print('\n\n\n\n')
     # print(transformed_df.index)
     # define percentages for train, val, test
-    training_perc = .70
+    training_perc = .80
     
-    testing_perc = .30
+    testing_perc = .20
     
     possible_pts = list(np.unique(list(transformed_df.index.get_level_values('PointIndex'))))
+    # print(possible_pts)
     # print("possible pts", possible_pts)
-    shuffled = random.sample(possible_pts, k=len(possible_pts))
+    # shuffled = random.sample(possible_pts, k=len(possible_pts))
     
-    training_pts = shuffled[0:round(training_perc*len(possible_pts))]
+    train_test_divide = round(training_perc*len(possible_pts))
+    # print(train_test_divide)
+    # print('train_test_divide: ', train_test_divide)
+    training_pts = possible_pts[0:train_test_divide]
     # print("training pts", training_pts)
     # validation_pts = shuffled[round(training_perc*len(possible_pts)) : round((training_perc+validation_perc)*len(possible_pts)) ]
-    testing_pts = shuffled[ round(training_perc*len(possible_pts)) : ]
+    testing_pts = possible_pts[ train_test_divide : ]
     
     training_df = transformed_df.loc[training_pts]
     # validation_df = transformed_df.loc[validation_pts]

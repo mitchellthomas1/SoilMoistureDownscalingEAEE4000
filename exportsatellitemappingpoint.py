@@ -25,7 +25,7 @@ REDUCTION_MODE ='10km'
 
 
 date_index = pd.date_range(start=start, end=end, freq = '10D')
-date_eelist = ee.List([ee.Date(str(d)) for d in date_index.values[:-1]])
+date_eecoll = ee.ImageCollection([ee.Image(0).set('Date',ee.Date(str(d))) for d in date_index.values[:-1]])
 
 nan_value = -99999
 
@@ -125,7 +125,7 @@ transform = [0.140625,0,-179.9993125,0,-0.09375,90.000125]
 
 smap_crs = 'EPSG:4326'
 smap_transform = [0.140625,0,-179.9993125,0,-0.09375,90.000125]
-
+ 
 
 s1_crs = 'EPSG:32615'
 s1_scale = 10
@@ -181,6 +181,20 @@ s1_filtered = S1_raw.filterDate(start,end) \
                 .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))\
                 .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))\
                 .filter(ee.Filter.eq('instrumentMode', 'IW'))
+                
+tpi_reduce = TPI.reduceResolution(reducer = ee.Reducer.mean(),
+                                 bestEffort = True, 
+                                 maxPixels = 65000) #\
+                           #.reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)    
+                            
+lc_reduce = LC.reduceResolution(reducer = ee.Reducer.mode(minBucketWidth = 1, maxBuckets = 85),
+                                 bestEffort = True, 
+                                 maxPixels = 65000)# \
+                          #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
+                            
+fc_reduce = FC.reduceResolution(reducer = ee.Reducer.mean(),
+                                 bestEffort = True, 
+                                 maxPixels = 65000) 
              
 
                             
@@ -202,7 +216,7 @@ def mappingDatesShell(geom):
     
         '''
         INTERVAL = 10
-        start = ee.Date(startDate)
+        start = ee.Date(ee.Image(startDate).get('Date'))
         end = start.advance(INTERVAL,'days')
         s1_mean = s1_filtered.filterDate(start,end).filterBounds(geom).mean()
         s2_mean = s2_filtered.filterDate(start,end).filterBounds(geom).mean()
@@ -217,37 +231,25 @@ def mappingDatesShell(geom):
                             maxPixels = 65000) #\
                        # .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
                                 
-        s2_1_reduce = s2_mean.select(s2_bands[:7]) \
+        s2_1_reduce = s2_mean\
                         .setDefaultProjection(crs = s2_crs, scale = s2_scale) \
                         .reduceResolution(reducer = ee.Reducer.mean(),
                                  bestEffort = True, 
                                  maxPixels = 65000)  #\
                         #    .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
                             
-        s2_2_reduce = s2_mean.select(s2_bands[7:]) \
-                        .setDefaultProjection(crs = s2_crs, scale = s2_scale)\
-                        .reduceResolution(reducer = ee.Reducer.mean(),
-                                 bestEffort = True, 
-                                 maxPixels = 65000) #\
+        # s2_2_reduce = s2_mean.select(s2_bands[7:]) \
+        #                 .setDefaultProjection(crs = s2_crs, scale = s2_scale)\
+        #                 .reduceResolution(reducer = ee.Reducer.mean(),
+        #                          bestEffort = True, 
+        #                          maxPixels = 65000) #\
                           #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
                             
-        tpi_reduce = TPI.reduceResolution(reducer = ee.Reducer.mean(),
-                                 bestEffort = True, 
-                                 maxPixels = 65000) #\
-                           #.reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)    
-                            
-        lc_reduce = LC.reduceResolution(reducer = ee.Reducer.mode(minBucketWidth = 1, maxBuckets = 85),
-                                 bestEffort = True, 
-                                 maxPixels = 65000)# \
-                          #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)
-                            
-        fc_reduce = FC.reduceResolution(reducer = ee.Reducer.mean(),
-                                 bestEffort = True, 
-                                 maxPixels = 65000) #\
+        #\
                           #  .reproject(crs = crs, crsTransform = REDUCTION_TRANSFORM, scale = REDUCTION_SCALE)    
                             
                             
-        final_image = s2_1_reduce.addBands(s2_2_reduce).addBands(s1_reduce).addBands(smap_mean) \
+        final_image = s2_1_reduce.addBands(s1_reduce).addBands(smap_mean) \
                                 .addBands(tpi_reduce).addBands(lc_reduce).addBands(fc_reduce) \
                                 .set('start', start, 'end',end)
                             
@@ -322,24 +324,24 @@ task.start()
 
 
 #### TRAINING DATA 2: Gauge Stations
-asset_id = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
-gauge_info_file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
-gauge_df = pd.read_csv(gauge_info_file)
-features = []
-for i in range(len(gauge_df)):
-    g = gauge_df.iloc[i]
-    geom = ee.Geometry.Point([ g.Longitude, g.Latitude,])
-    ft  = ee.Feature(geom, {'system:index':g.GaugeID})
-    features.append(ft)
-fc = ee.FeatureCollection(features)
-print(fc.size().getInfo())
-# 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
-# task = ee.batch.Export.table.toAsset(collection = fc, 
-#                                          description = 'gaugepoints', 
-#                                          assetId = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
-#                                          )
-# task.start()
-fc = ee.FeatureCollection(asset_id)
+# asset_id = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+# gauge_info_file = '/Users/Mitchell/Documents/MLEnvironment/SoilMoistureDownscalingEAEE4000/DataDownload/InSitu/InSituDownload1/namesandcoordinates.csv'
+# gauge_df = pd.read_csv(gauge_info_file)
+# features = []
+# for i in range(len(gauge_df)):
+#     g = gauge_df.iloc[i]
+#     geom = ee.Geometry.Point([ g.Longitude, g.Latitude,])
+#     ft  = ee.Feature(geom, {'system:index':g.GaugeID})
+#     features.append(ft)
+# fc = ee.FeatureCollection(features)
+# print(fc.size().getInfo())
+# # 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+# # task = ee.batch.Export.table.toAsset(collection = fc, 
+# #                                          description = 'gaugepoints', 
+# #                                          assetId = 'users/mlt2177/SoilMoistureDownscale/GaugePoints'
+# #                                          )
+# # task.start()
+# fc = ee.FeatureCollection(asset_id)
 
 # # print(fc.first().getInfo())
 # output_fc = ee.FeatureCollection(fc.map(mapOverGeoms)).flatten()
